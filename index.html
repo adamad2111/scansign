@@ -1,0 +1,2074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0a0a0c" />
+  <meta name="description" content="Scan documents, add custom signatures and stamps with iOS Liquid Glass UI" />
+  <title>ScanSign • Custom Document Scanner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0a0a0c;
+      --bg-elevated: rgba(28, 28, 32, 0.75);
+      --glass: rgba(255, 255, 255, 0.07);
+      --glass-strong: rgba(255, 255, 255, 0.13);
+      --glass-border: rgba(255, 255, 255, 0.16);
+      --text: #f5f5f7;
+      --text-secondary: rgba(235, 235, 245, 0.58);
+      --text-tertiary: rgba(235, 235, 245, 0.28);
+      --accent: #0a84ff;
+      --accent-soft: rgba(10, 132, 255, 0.22);
+      --green: #30d158;
+      --orange: #ff9f0a;
+      --red: #ff453a;
+      --purple: #bf5af2;
+      --radius: 22px;
+      --radius-sm: 14px;
+      --radius-lg: 30px;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --blur: 48px;
+      --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+      --pen-color: #0a1f4d;
+      --stamp-size: 130;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      user-select: none;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overscroll-behavior: none;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 90% 55% at 15% 8%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 55%),
+        radial-gradient(ellipse 70% 45% at 85% 85%, rgba(191, 90, 242, 0.14), transparent 50%),
+        radial-gradient(ellipse 50% 35% at 50% 55%, rgba(48, 209, 88, 0.05), transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+      transition: background 0.6s ease;
+    }
+
+    .app {
+      position: relative;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      z-index: 1;
+    }
+
+    /* ===== LIQUID GLASS ===== */
+    .glass {
+      background: var(--glass);
+      backdrop-filter: blur(var(--blur)) saturate(190%);
+      -webkit-backdrop-filter: blur(var(--blur)) saturate(190%);
+      border: 1px solid var(--glass-border);
+      box-shadow:
+        0 10px 40px rgba(0, 0, 0, 0.38),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+
+    .glass-strong {
+      background: var(--glass-strong);
+      backdrop-filter: blur(calc(var(--blur) + 12px)) saturate(210%);
+      -webkit-backdrop-filter: blur(calc(var(--blur) + 12px)) saturate(210%);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    /* ===== TOP BAR ===== */
+    .top-bar {
+      padding: calc(14px + var(--safe-top)) 18px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      z-index: 30;
+    }
+
+    .top-bar h1 {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.35px;
+    }
+
+    .icon-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      color: var(--text);
+      cursor: pointer;
+      transition: transform 0.22s var(--spring), background 0.2s, border-color 0.2s;
+    }
+
+    .icon-btn:active {
+      transform: scale(0.88);
+      background: var(--glass-strong);
+    }
+
+    .icon-btn.primary {
+      background: var(--accent);
+      border-color: transparent;
+      color: #fff;
+      box-shadow: 0 4px 18px color-mix(in srgb, var(--accent) 45%, transparent);
+    }
+
+    .icon-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* ===== SCREENS ===== */
+    .screen {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(16px) scale(0.97);
+      transition: opacity 0.38s ease, transform 0.42s var(--spring);
+    }
+
+    .screen.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: none;
+    }
+
+    /* ===== HOME ===== */
+    #home {
+      padding-bottom: calc(28px + var(--safe-bottom));
+      overflow-y: auto;
+    }
+
+    .hero {
+      padding: 18px 24px 6px;
+      text-align: center;
+    }
+
+    .hero .logo {
+      width: 72px;
+      height: 72px;
+      border-radius: 20px;
+      background: linear-gradient(145deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #5e5ce6));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 18px;
+      box-shadow: 0 14px 42px color-mix(in srgb, var(--accent) 42%, transparent);
+      transition: background 0.4s, box-shadow 0.4s;
+    }
+
+    .hero .logo svg {
+      width: 36px;
+      height: 36px;
+      stroke: #fff;
+      fill: none;
+      stroke-width: 1.6;
+    }
+
+    .hero h2 {
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: -0.7px;
+      margin-bottom: 6px;
+    }
+
+    .hero p {
+      color: var(--text-secondary);
+      font-size: 15px;
+      font-weight: 450;
+    }
+
+    .action-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      padding: 26px 18px 12px;
+    }
+
+    .action-card {
+      border-radius: var(--radius);
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+      cursor: pointer;
+      transition: transform 0.25s var(--spring), background 0.2s;
+      min-height: 138px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .action-card:active {
+      transform: scale(0.955);
+    }
+
+    .action-card .icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .action-card .icon svg {
+      width: 24px;
+      height: 24px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .action-card.scan .icon { background: var(--accent-soft); color: var(--accent); }
+    .action-card.import .icon { background: rgba(48, 209, 88, 0.18); color: var(--green); }
+    .action-card.sign .icon { background: rgba(255, 159, 10, 0.18); color: var(--orange); }
+    .action-card.stamp .icon { background: rgba(191, 90, 242, 0.18); color: var(--purple); }
+
+    .action-card span {
+      font-size: 16.5px;
+      font-weight: 600;
+      letter-spacing: -0.25px;
+    }
+
+    .action-card small {
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      line-height: 1.35;
+      font-weight: 450;
+    }
+
+    /* ===== SETTINGS CARD ===== */
+    .settings-card {
+      margin: 8px 18px 0;
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      transition: transform 0.2s var(--spring);
+    }
+
+    .settings-card:active { transform: scale(0.98); }
+
+    .settings-card .left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .settings-card .left .icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: rgba(142, 142, 147, 0.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #8e8e93;
+    }
+
+    .settings-card .left .icon svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+    }
+
+    .settings-card .title {
+      font-size: 15.5px;
+      font-weight: 600;
+    }
+
+    .settings-card .sub {
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      margin-top: 1px;
+    }
+
+    /* ===== SCANNER ===== */
+    #scanner { background: #000; }
+
+    .camera-wrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .scan-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .scan-frame {
+      width: min(88vw, 360px);
+      aspect-ratio: 3/4;
+      border: 2.5px solid rgba(255, 255, 255, 0.75);
+      border-radius: 18px;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.48);
+      position: relative;
+    }
+
+    .scan-frame::before,
+    .scan-frame::after {
+      content: "";
+      position: absolute;
+      width: 30px;
+      height: 30px;
+      border: 3.5px solid var(--accent);
+    }
+
+    .scan-frame::before {
+      top: -3px; left: -3px;
+      border-right: none; border-bottom: none;
+      border-radius: 14px 0 0 0;
+    }
+
+    .scan-frame::after {
+      bottom: -3px; right: -3px;
+      border-left: none; border-top: none;
+      border-radius: 0 0 14px 0;
+    }
+
+    .camera-controls {
+      padding: 18px 28px calc(26px + var(--safe-bottom));
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      background: linear-gradient(to top, rgba(0,0,0,0.88), transparent);
+    }
+
+    .capture-btn {
+      width: 78px;
+      height: 78px;
+      border-radius: 50%;
+      border: 5px solid #fff;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+
+    .capture-btn:active { transform: scale(0.9); }
+
+    .capture-btn::after {
+      content: "";
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: #fff;
+      transition: background 0.15s;
+    }
+
+    .capture-btn:active::after { background: #e5e5ea; }
+
+    /* ===== EDITOR ===== */
+    #editor { background: #0d0d0f; }
+
+    .editor-canvas-wrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+      background: #111;
+    }
+
+    #mainCanvas {
+      max-width: calc(100% - 20px);
+      max-height: calc(100% - 20px);
+      box-shadow: 0 12px 48px rgba(0,0,0,0.55);
+      background: #fff;
+      border-radius: 4px;
+      cursor: default;
+    }
+
+    .empty-editor {
+      color: var(--text-tertiary);
+      text-align: center;
+      padding: 40px;
+      font-size: 15px;
+      display: none;
+    }
+
+    .toolbar {
+      padding: 12px 14px calc(14px + var(--safe-bottom));
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      background: rgba(18, 18, 20, 0.92);
+      backdrop-filter: blur(30px);
+      border-top: 1px solid var(--glass-border);
+    }
+
+    .toolbar::-webkit-scrollbar { display: none; }
+
+    .tool {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      min-width: 62px;
+    }
+
+    .tool:active, .tool.active {
+      background: var(--accent-soft);
+      border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+      color: var(--accent);
+    }
+
+    .tool .t-icon {
+      width: 24px;
+      height: 24px;
+
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .tool .t-icon svg {
+      width: 22px;
+      height: 22px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Selection handles for annotations */
+    .ann-handle {
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      background: var(--accent);
+      border: 2px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      z-index: 50;
+      pointer-events: auto;
+      transform: translate(-50%, -50%);
+    }
+
+    /* ===== MODALS / SHEETS ===== */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      z-index: 200;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .modal-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .sheet {
+      width: 100%;
+      max-width: 520px;
+      background: rgba(28, 28, 32, 0.94);
+      backdrop-filter: blur(60px) saturate(190%);
+      -webkit-backdrop-filter: blur(60px) saturate(190%);
+      border-radius: 28px 28px 0 0;
+      border: 1px solid var(--glass-border);
+      border-bottom: none;
+      padding: 10px 20px calc(24px + var(--safe-bottom));
+      transform: translateY(105%);
+      transition: transform 0.42s var(--spring);
+      max-height: 90vh;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .modal-backdrop.open .sheet {
+      transform: translateY(0);
+    }
+
+    .sheet-handle {
+      width: 38px;
+      height: 5px;
+      border-radius: 3px;
+      background: rgba(255,255,255,0.22);
+      margin: 4px auto 14px;
+    }
+
+    .sheet h3 {
+      font-size: 19px;
+      font-weight: 650;
+      margin-bottom: 16px;
+      text-align: center;
+      letter-spacing: -0.3px;
+    }
+
+    .sig-container {
+      background: #fff;
+      border-radius: 18px;
+      overflow: hidden;
+      margin-bottom: 14px;
+      touch-action: none;
+      border: 1px solid rgba(0,0,0,0.06);
+    }
+
+    #sigCanvas {
+      width: 100%;
+      height: 190px;
+      display: block;
+    }
+
+    .sheet-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 6px;
+    }
+
+    .btn {
+      flex: 1;
+      height: 52px;
+      border-radius: 16px;
+      border: none;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s, opacity 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      letter-spacing: -0.2px;
+    }
+
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.4; pointer-events: none; }
+
+    .btn-secondary {
+      background: var(--glass-strong);
+      color: var(--text);
+      border: 1px solid var(--glass-border);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 40%, transparent);
+    }
+
+    .btn-danger {
+      background: rgba(255, 69, 58, 0.18);
+      color: var(--red);
+    }
+
+    /* Color / option rows */
+    .option-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .option-row:last-child { border-bottom: none; }
+
+    .option-row label {
+      font-size: 15px;
+      font-weight: 500;
+    }
+
+    .color-swatches {
+      display: flex;
+      gap: 10px;
+    }
+
+    .swatch {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 2.5px solid transparent;
+      cursor: pointer;
+      transition: transform 0.2s var(--spring), border-color 0.2s;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15);
+    }
+
+    .swatch:active { transform: scale(0.9); }
+    .swatch.active {
+      border-color: #fff;
+      box-shadow: 0 0 0 2px var(--accent);
+    }
+
+    /* Stamp grid */
+    .stamp-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .stamp-item {
+      aspect-ratio: 1;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.05);
+      border: 2px solid transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+      font-size: 26px;
+      transition: all 0.2s;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .stamp-item:active, .stamp-item.selected {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      transform: scale(0.96);
+    }
+
+    .stamp-item img {
+      width: 62%;
+      height: 62%;
+      object-fit: contain;
+    }
+
+    .stamp-item .label {
+      font-size: 9.5px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      letter-spacing: -0.1px;
+    }
+
+    /* Custom text stamp input */
+    .text-stamp-input {
+      width: 100%;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid var(--glass-border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      color: var(--text);
+      font-size: 16px;
+      margin-bottom: 14px;
+      outline: none;
+    }
+
+    .text-stamp-input:focus {
+      border-color: var(--accent);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: calc(18px + var(--safe-top));
+      left: 50%;
+      transform: translateX(-50%) translateY(-24px);
+      background: rgba(30, 30, 34, 0.92);
+      backdrop-filter: blur(24px);
+      padding: 12px 22px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 550;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.38s var(--spring);
+      z-index: 300;
+      border: 1px solid var(--glass-border);
+      white-space: nowrap;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .hidden { display: none !important; }
+
+    /* Size slider */
+    .size-control {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 10px 0 16px;
+    }
+
+    .size-control input[type="range"] {
+      flex: 1;
+      -webkit-appearance: none;
+      height: 4px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 2px;
+      outline: none;
+    }
+
+    .size-control input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+
+    .size-value {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      min-width: 36px;
+      text-align: right;
+    }
+
+    /* Preview badge while placing */
+    .place-hint {
+      position: absolute;
+      bottom: calc(110px + var(--safe-bottom));
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(12px);
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 40;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s;
+      white-space: nowrap;
+    }
+
+    .place-hint.visible { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- ========== HOME ========== -->
+    <section id="home" class="screen active">
+      <div class="top-bar">
+        <div style="width:42px"></div>
+        <h1>ScanSign</h1>
+        <button class="icon-btn" id="btnSettings" aria-label="Settings">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        </button>
+      </div>
+
+      <div class="hero">
+        <div class="logo">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        </div>
+        <h2>Scan & Sign</h2>
+        <p>Capture • Customize • Sign • Stamp</p>
+      </div>
+
+      <div class="action-grid">
+        <div class="action-card glass scan" id="btnScan">
+          <div class="icon">
+            <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          </div>
+          <span>Scan</span>
+          <small>Camera capture with frame guide</small>
+        </div>
+        <div class="action-card glass import" id="btnImport">
+          <div class="icon">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+          </div>
+          <span>Import</span>
+          <small>From Photos or Files</small>
+        </div>
+        <div class="action-card glass sign" id="btnQuickSign">
+          <div class="icon">
+            <svg viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+          </div>
+          <span>Signature</span>
+          <small>Draw & customize your signature</small>
+        </div>
+        <div class="action-card glass stamp" id="btnQuickStamp">
+          <div class="icon">
+            <svg viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          </div>
+          <span>Stamps</span>
+          <small>Built-in + custom stamps</small>
+        </div>
+      </div>
+
+      <div class="settings-card glass" id="btnOpenCustomize">
+        <div class="left">
+          <div class="icon">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </div>
+          <div>
+            <div class="title">Customize</div>
+            <div class="sub">Accent color, pen style, stamp size</div>
+          </div>
+        </div>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.4"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+    </section>
+
+    <!-- ========== SCANNER ========== -->
+    <section id="scanner" class="screen">
+      <div class="top-bar" style="position:absolute;width:100%;background:linear-gradient(to bottom,rgba(0,0,0,0.65),transparent);z-index:10;">
+        <button class="icon-btn" id="btnCloseScanner">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <h1 style="color:#fff">Scan Document</h1>
+        <button class="icon-btn" id="btnTorch" title="Flash">
+          <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </button>
+      </div>
+      <div class="camera-wrap">
+        <video id="video" autoplay playsinline muted></video>
+        <div class="scan-overlay">
+          <div class="scan-frame"></div>
+        </div>
+      </div>
+      <div class="camera-controls">
+        <button class="icon-btn" id="btnGalleryFromCam" style="background:rgba(255,255,255,0.14)">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        </button>
+        <button class="capture-btn" id="btnCapture" aria-label="Capture"></button>
+        <button class="icon-btn" id="btnSwitchCam" style="background:rgba(255,255,255,0.14)">
+          <svg viewBox="0 0 24 24"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- ========== EDITOR ========== -->
+    <section id="editor" class="screen">
+      <div class="top-bar">
+        <button class="icon-btn" id="btnBackEditor">
+          <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <h1>Edit</h1>
+        <button class="icon-btn primary" id="btnExport" aria-label="Export">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+      </div>
+
+      <div class="editor-canvas-wrap" id="canvasWrap">
+        <canvas id="mainCanvas"></canvas>
+        <div class="empty-editor" id="emptyState">No document loaded</div>
+        <div class="place-hint" id="placeHint">Tap anywhere to place</div>
+      </div>
+
+      <div class="toolbar" id="mainToolbar">
+        <button class="tool" data-tool="signature">
+          <span class="t-icon"><svg viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></span>
+          Signature
+        </button>
+        <button class="tool" data-tool="stamp">
+          <span class="t-icon"><svg viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span>
+          Stamp
+        </button>
+        <button class="tool" data-tool="text">
+          <span class="t-icon"><svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg></span>
+          Text
+        </button>
+        <button class="tool" data-tool="rotate">
+          <span class="t-icon"><svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span>
+          Rotate
+        </button>
+        <button class="tool" data-tool="filter">
+          <span class="t-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20"/></svg></span>
+          Filter
+        </button>
+        <button class="tool" data-tool="undo">
+          <span class="t-icon"><svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></span>
+          Undo
+        </button>
+        <button class="tool" data-tool="clear">
+          <span class="t-icon"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></span>
+          Clear
+        </button>
+      </div>
+    </section>
+  </div>
+
+  <!-- Signature Sheet -->
+  <div class="modal-backdrop" id="sigModal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Signature</h3>
+
+      <!-- Tabs: Draw / Upload -->
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button class="btn btn-primary" id="tabDrawSig" style="flex:1;height:42px;font-size:14px">Draw</button>
+        <button class="btn btn-secondary" id="tabUploadSig" style="flex:1;height:42px;font-size:14px">Upload PNG</button>
+      </div>
+
+      <!-- Draw panel -->
+      <div id="drawSigPanel">
+        <div class="sig-container">
+          <canvas id="sigCanvas"></canvas>
+        </div>
+
+        <div class="option-row">
+          <label>Pen Color</label>
+          <div class="color-swatches" id="penColors">
+            <div class="swatch active" data-color="#0a1f4d" style="background:#0a1f4d"></div>
+            <div class="swatch" data-color="#000000" style="background:#000"></div>
+            <div class="swatch" data-color="#1a3a8a" style="background:#1a3a8a"></div>
+            <div class="swatch" data-color="#8b0000" style="background:#8b0000"></div>
+            <div class="swatch" data-color="#0d5c2e" style="background:#0d5c2e"></div>
+          </div>
+        </div>
+
+        <div class="size-control">
+          <label style="font-size:14px;font-weight:500;min-width:70px">Thickness</label>
+          <input type="range" id="penThickness" min="0.8" max="4.5" step="0.1" value="2.2" />
+          <span class="size-value" id="thicknessVal">2.2</span>
+        </div>
+      </div>
+
+      <!-- Upload panel -->
+      <div id="uploadSigPanel" class="hidden">
+        <div style="background:rgba(255,255,255,0.05);border:1.5px dashed var(--glass-border);border-radius:18px;padding:28px 16px;text-align:center;margin-bottom:14px">
+          <div style="font-size:32px;margin-bottom:10px;opacity:0.7">🖼️</div>
+          <div style="font-size:15px;font-weight:600;margin-bottom:4px">Upload Signature Image</div>
+          <div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:16px">PNG recommended for transparent background</div>
+          <button class="btn btn-secondary" id="btnPickSigImage" style="height:44px;max-width:200px;margin:0 auto">Choose PNG / Image</button>
+        </div>
+        <div id="sigUploadPreview" style="display:none;text-align:center;margin-bottom:14px">
+          <img id="sigPreviewImg" style="max-width:100%;max-height:140px;border-radius:12px;background:#fff;padding:8px" alt="Signature preview" />
+          <div style="font-size:12px;color:var(--text-secondary);margin-top:8px">Preview (PNG)</div>
+        </div>
+      </div>
+
+      <div class="sheet-actions">
+        <button class="btn btn-secondary" id="btnClearSig">Clear</button>
+        <button class="btn btn-primary" id="btnSaveSig">Use Signature</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stamp Sheet -->
+  <div class="modal-backdrop" id="stampModal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Choose Stamp</h3>
+      <div class="stamp-grid" id="stampGrid"></div>
+
+      <div style="margin-bottom:8px;font-size:13px;color:var(--text-secondary);font-weight:500">Or create a text stamp</div>
+      <input class="text-stamp-input" id="textStampInput" placeholder="e.g. APPROVED, PAID, CONFIDENTIAL" maxlength="24" />
+
+      <div class="size-control">
+        <label style="font-size:14px;font-weight:500;min-width:70px">Size</label>
+        <input type="range" id="stampSizeSlider" min="80" max="220" step="5" value="130" />
+        <span class="size-value" id="stampSizeVal">130</span>
+      </div>
+
+      <div class="sheet-actions">
+        <button class="btn btn-secondary" id="btnUploadStamp">Upload Image</button>
+        <button class="btn btn-primary" id="btnPlaceStamp" disabled>Place</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customize / Settings Sheet -->
+  <div class="modal-backdrop" id="customizeModal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Customize</h3>
+
+      <div class="option-row">
+        <label>Accent Color</label>
+        <div class="color-swatches" id="accentColors">
+          <div class="swatch active" data-color="#0a84ff" style="background:#0a84ff"></div>
+          <div class="swatch" data-color="#30d158" style="background:#30d158"></div>
+          <div class="swatch" data-color="#ff9f0a" style="background:#ff9f0a"></div>
+          <div class="swatch" data-color="#bf5af2" style="background:#bf5af2"></div>
+          <div class="swatch" data-color="#ff453a" style="background:#ff453a"></div>
+          <div class="swatch" data-color="#64d2ff" style="background:#64d2ff"></div>
+        </div>
+      </div>
+
+      <div class="option-row">
+        <label>Default Stamp Size</label>
+        <div class="size-control" style="margin:0;flex:1;max-width:180px">
+          <input type="range" id="defaultStampSize" min="90" max="200" step="5" value="130" />
+          <span class="size-value" id="defStampVal">130</span>
+        </div>
+      </div>
+
+      <div class="option-row">
+        <label>Signature Style Style</label>
+        <div class="color-swatches" id="defaultPenColors">
+          <div class="swatch active" data-color="#0a1f4d" style="background:#0a1f4d"></div>
+          <div class="swatch" data-color="#000000" style="background:#000"></div>
+          <div class="swatch" data-color="#8b0000" style="background:#8b0000"></div>
+        </div>
+      </div>
+
+      <div style="margin-top:20px">
+        <button class="btn btn-primary" id="btnSaveCustomize" style="width:100%">Save Preferences</button>
+      </div>
+      <div style="margin-top:10px">
+        <button class="btn btn-secondary" id="btnResetPrefs" style="width:100%">Reset to Defaults</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Sheet -->
+  <div class="modal-backdrop" id="exportModal">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Export Document</h3>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <button class="btn btn-primary" id="btnExportPNG">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          Save as PNG
+        </button>
+        <button class="btn btn-primary" id="btnExportPDF" style="background:var(--green)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Save as PDF
+        </button>
+        <button class="btn btn-secondary" id="btnCloseExport">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden inputs -->
+  <input type="file" id="fileInput" accept="image/*" class="hidden" />
+  <input type="file" id="stampInput" accept="image/*" class="hidden" />
+  <input type="file" id="sigInput" accept="image/png,image/jpeg,image/webp,image/*" class="hidden" />
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ========== PREFERENCES (localStorage) ==========
+    const PREFS_KEY = 'scansign_prefs_v2';
+    const defaultPrefs = {
+      accent: '#0a84ff',
+      penColor: '#0a1f4d',
+      stampSize: 130,
+      thickness: 2.2
+    };
+
+    function loadPrefs() {
+      try {
+        return { ...defaultPrefs, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') };
+      } catch { return { ...defaultPrefs }; }
+    }
+
+    function savePrefs(p) {
+      localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+      applyPrefs(p);
+    }
+
+    function applyPrefs(p) {
+      document.documentElement.style.setProperty('--accent', p.accent);
+      document.documentElement.style.setProperty('--accent-soft', p.accent + '38');
+      document.documentElement.style.setProperty('--pen-color', p.penColor);
+      document.documentElement.style.setProperty('--stamp-size', p.stampSize);
+      state.prefs = p;
+    }
+
+    // ========== STATE ==========
+    const state = {
+      currentScreen: 'home',
+      stream: null,
+      facingMode: 'environment',
+      torchOn: false,
+      docImage: null,
+      annotations: [],
+      history: [],
+      selectedStamp: null,
+      signatureDataUrl: null,
+      filter: 'none',
+      rotation: 0,
+      isPlacing: null,
+      placingSize: 130,
+      prefs: loadPrefs(),
+      penColor: '#0a1f4d',
+      penThickness: 2.2
+    };
+
+    applyPrefs(state.prefs);
+
+    // ========== DOM ==========
+    const $ = (s) => document.querySelector(s);
+    const screens = { home: $('#home'), scanner: $('#scanner'), editor: $('#editor') };
+    const video = $('#video');
+    const mainCanvas = $('#mainCanvas');
+    const ctx = mainCanvas.getContext('2d');
+    const canvasWrap = $('#canvasWrap');
+    const emptyState = $('#emptyState');
+    const placeHint = $('#placeHint');
+
+    // ========== NAV ==========
+    function showScreen(name) {
+      Object.values(screens).forEach(s => s.classList.remove('active'));
+      screens[name].classList.add('active');
+      state.currentScreen = name;
+      if (name !== 'scanner' && state.stream) stopCamera();
+      if (name !== 'editor') {
+        state.isPlacing = null;
+        placeHint.classList.remove('visible');
+      }
+    }
+
+    // ========== TOAST ==========
+    let toastTimer;
+    function toast(msg, ms = 2300) {
+      const t = $('#toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+    }
+
+    // ========== CAMERA (high quality) ==========
+    async function startCamera() {
+      try {
+        if (state.stream) stopCamera();
+        // Request max practical resolution for sharp document scans
+        const constraints = {
+          video: {
+            facingMode: { ideal: state.facingMode },
+            width: { ideal: 4096, min: 1280 },
+            height: { ideal: 3072, min: 720 },
+            // Prefer high detail over frame rate for documents
+            frameRate: { ideal: 30, max: 30 }
+          },
+          audio: false
+        };
+        try {
+          state.stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch {
+          // Fallback if ultra-high res not supported
+          state.stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: state.facingMode,
+              width: { ideal: 1920 },
+              height: { ideal: 1080 }
+            },
+            audio: false
+          });
+        }
+        video.srcObject = state.stream;
+        await video.play();
+
+        // Try to lock focus / exposure for documents when supported
+        const track = state.stream.getVideoTracks()[0];
+        const caps = track.getCapabilities?.() || {};
+        const advanced = [];
+        if (caps.focusMode && caps.focusMode.includes('continuous')) {
+          advanced.push({ focusMode: 'continuous' });
+        }
+        if (caps.exposureMode && caps.exposureMode.includes('continuous')) {
+          advanced.push({ exposureMode: 'continuous' });
+        }
+        if (caps.whiteBalanceMode && caps.whiteBalanceMode.includes('continuous')) {
+          advanced.push({ whiteBalanceMode: 'continuous' });
+        }
+        if (advanced.length) {
+          try { await track.applyConstraints({ advanced }); } catch {}
+        }
+      } catch (err) {
+        console.error(err);
+        toast('Camera access denied');
+        showScreen('home');
+      }
+    }
+
+    function stopCamera() {
+      if (state.stream) {
+        state.stream.getTracks().forEach(t => t.stop());
+        state.stream = null;
+      }
+      video.srcObject = null;
+    }
+
+    async function toggleTorch() {
+      if (!state.stream) return;
+      const track = state.stream.getVideoTracks()[0];
+      const caps = track.getCapabilities?.();
+      if (caps?.torch) {
+        state.torchOn = !state.torchOn;
+        await track.applyConstraints({ advanced: [{ torch: state.torchOn }] });
+        toast(state.torchOn ? 'Flash on' : 'Flash off');
+      } else toast('Flash not available on this device');
+    }
+
+    /** Enhance document image: boost contrast, slight sharpen, cleaner paper */
+    function enhanceDocumentImage(sourceCanvas) {
+      const w = sourceCanvas.width;
+      const h = sourceCanvas.height;
+      const out = document.createElement('canvas');
+      out.width = w;
+      out.height = h;
+      const ctx = out.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(sourceCanvas, 0, 0);
+
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const d = imageData.data;
+      // Contrast + mild brightness + unsharp-style edge boost
+      const contrast = 1.22;
+      const brightness = 8;
+      for (let i = 0; i < d.length; i += 4) {
+        let r = d[i], g = d[i + 1], b = d[i + 2];
+        // Contrast around mid-gray
+        r = (r - 128) * contrast + 128 + brightness;
+        g = (g - 128) * contrast + 128 + brightness;
+        b = (b - 128) * contrast + 128 + brightness;
+        // Clamp
+        d[i] = r < 0 ? 0 : r > 255 ? 255 : r;
+        d[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
+        d[i + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+      }
+      ctx.putImageData(imageData, 0, 0);
+      return out;
+    }
+
+    function captureFrame() {
+      if (!video.videoWidth) return;
+      toast('Capturing high quality…');
+
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(video, 0, 0, w, h);
+
+      // Document enhancement for clearer text
+      const enhanced = enhanceDocumentImage(c);
+
+      const img = new Image();
+      img.onload = () => {
+        state.docImage = img;
+        state.annotations = [];
+        state.history = [];
+        state.rotation = 0;
+        state.filter = 'document'; // default to document mode after scan
+        stopCamera();
+        showScreen('editor');
+        renderDocument();
+        toast(`Captured ${w}×${h} · high quality`);
+      };
+      // PNG preserves maximum detail for scanned pages
+      img.src = enhanced.toDataURL('image/png');
+    }
+
+    // ========== RENDER ==========
+    function renderDocument() {
+      if (!state.docImage) {
+        mainCanvas.style.display = 'none';
+        emptyState.style.display = 'block';
+        return;
+      }
+      emptyState.style.display = 'none';
+      mainCanvas.style.display = 'block';
+
+      const img = state.docImage;
+      const maxW = canvasWrap.clientWidth - 24;
+      const maxH = canvasWrap.clientHeight - 24;
+      let iw = img.naturalWidth || img.width;
+      let ih = img.naturalHeight || img.height;
+      const rot = ((state.rotation % 360) + 360) % 360;
+      if (rot === 90 || rot === 270) [iw, ih] = [ih, iw];
+
+      const scale = Math.min(maxW / iw, maxH / ih, 1.2);
+      const dw = Math.round(iw * scale);
+      const dh = Math.round(ih * scale);
+
+      mainCanvas.width = dw;
+      mainCanvas.height = dh;
+
+      ctx.save();
+      ctx.clearRect(0, 0, dw, dh);
+      ctx.translate(dw / 2, dh / 2);
+      ctx.rotate((state.rotation * Math.PI) / 180);
+
+      const drawW = (rot === 90 || rot === 270) ? dh : dw;
+      const drawH = (rot === 90 || rot === 270) ? dw : dh;
+
+      // High-quality rendering
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      if (state.filter === 'document') {
+        // Clean document look: strong contrast, slight brighten
+        ctx.filter = 'contrast(1.28) brightness(1.04) saturate(0.92)';
+      } else if (state.filter === 'grayscale') {
+        ctx.filter = 'grayscale(1) contrast(1.15)';
+      } else if (state.filter === 'contrast') {
+        ctx.filter = 'contrast(1.35) brightness(1.06)';
+      } else if (state.filter === 'bw') {
+        ctx.filter = 'grayscale(1) contrast(2.1) brightness(1.05)';
+      } else {
+        ctx.filter = 'none';
+      }
+
+      ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.filter = 'none';
+      ctx.restore();
+
+      // Annotations
+      state.annotations.forEach((ann, i) => {
+        if (ann.type === 'signature' || ann.type === 'stamp') {
+          if (!ann._img) {
+            ann._img = new Image();
+            ann._img.src = ann.data;
+            ann._img.onload = () => renderDocument();
+          }
+          if (ann._img.complete) {
+            ctx.drawImage(ann._img, ann.x, ann.y, ann.w, ann.h);
+          }
+        } else if (ann.type === 'text') {
+          ctx.font = `600 ${ann.fontSize || 22}px Inter, system-ui, sans-serif`;
+          ctx.fillStyle = ann.color || '#111';
+          ctx.fillText(ann.text, ann.x, ann.y);
+        }
+      });
+    }
+
+    // ========== HISTORY ==========
+    function pushHistory() {
+      state.history.push(JSON.stringify(state.annotations.map(a => ({
+        type: a.type, x: a.x, y: a.y, w: a.w, h: a.h, data: a.data, text: a.text, fontSize: a.fontSize, color: a.color
+      }))));
+      if (state.history.length > 30) state.history.shift();
+    }
+
+    function undo() {
+      if (state.history.length === 0) {
+        toast('Nothing to undo');
+        return;
+      }
+      state.annotations = JSON.parse(state.history.pop());
+      // clear cached images so they reload
+      state.annotations.forEach(a => delete a._img);
+      renderDocument();
+      toast('Undone');
+    }
+
+    // ========== SIGNATURE ==========
+    let signaturePad = null;
+    let sigMode = 'draw'; // 'draw' | 'upload'
+    let uploadedSigDataUrl = null;
+
+    function setSigMode(mode) {
+      sigMode = mode;
+      const drawPanel = $('#drawSigPanel');
+      const uploadPanel = $('#uploadSigPanel');
+      const tabDraw = $('#tabDrawSig');
+      const tabUpload = $('#tabUploadSig');
+
+      if (mode === 'draw') {
+        drawPanel.classList.remove('hidden');
+        uploadPanel.classList.add('hidden');
+        tabDraw.classList.remove('btn-secondary');
+        tabDraw.classList.add('btn-primary');
+        tabUpload.classList.remove('btn-primary');
+        tabUpload.classList.add('btn-secondary');
+        // re-init pad if needed
+        setTimeout(() => initSignaturePad(), 50);
+      } else {
+        drawPanel.classList.add('hidden');
+        uploadPanel.classList.remove('hidden');
+        tabUpload.classList.remove('btn-secondary');
+        tabUpload.classList.add('btn-primary');
+        tabDraw.classList.remove('btn-primary');
+        tabDraw.classList.add('btn-secondary');
+      }
+    }
+
+    function initSignaturePad() {
+      const canvas = $('#sigCanvas');
+      if (!canvas || canvas.offsetWidth === 0) return;
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+      const w = canvas.offsetWidth;
+      const h = canvas.offsetHeight;
+      canvas.width = w * ratio;
+      canvas.height = h * ratio;
+      const c = canvas.getContext('2d');
+      c.scale(ratio, ratio);
+
+      if (signaturePad) signaturePad.off();
+      signaturePad = new SignaturePad(canvas, {
+        backgroundColor: 'rgb(255,255,255)',
+        penColor: state.penColor || state.prefs.penColor,
+        minWidth: state.penThickness * 0.55,
+        maxWidth: state.penThickness * 1.35
+      });
+
+      // Clear to white
+      signaturePad.clear();
+
+      if (state.signatureDataUrl && sigMode === 'draw') {
+        try { signaturePad.fromDataURL(state.signatureDataUrl); } catch {}
+      }
+    }
+
+    function openSignaturePad() {
+      $('#sigModal').classList.add('open');
+      setSigMode('draw');
+      // sync swatches
+      document.querySelectorAll('#penColors .swatch').forEach(s => {
+        s.classList.toggle('active', s.dataset.color === (state.penColor || state.prefs.penColor));
+      });
+      $('#penThickness').value = state.penThickness;
+      $('#thicknessVal').textContent = state.penThickness.toFixed(1);
+      // reset upload preview if needed
+      if (!uploadedSigDataUrl) {
+        $('#sigUploadPreview').style.display = 'none';
+      }
+    }
+
+    function closeSignaturePad() {
+      $('#sigModal').classList.remove('open');
+    }
+
+    function processUploadedSignature(file) {
+      if (!file || !file.type.startsWith('image/')) {
+        toast('Please select an image file (PNG recommended)');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          // Convert / ensure PNG with transparent-friendly processing
+          const maxW = 600;
+          const scale = Math.min(1, maxW / img.width);
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.width * scale);
+          c.height = Math.round(img.height * scale);
+          const cx = c.getContext('2d');
+          cx.drawImage(img, 0, 0, c.width, c.height);
+
+          // Optional: simple white-ish background removal for better PNG look
+          try {
+            const imageData = cx.getImageData(0, 0, c.width, c.height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i], g = data[i+1], b = data[i+2];
+              // If nearly white, make transparent
+              if (r > 240 && g > 240 && b > 240) {
+                data[i+3] = 0;
+              }
+            }
+            cx.putImageData(imageData, 0, 0);
+          } catch {}
+
+          uploadedSigDataUrl = c.toDataURL('image/png');
+          state.signatureDataUrl = uploadedSigDataUrl;
+
+          // Show preview
+          const preview = $('#sigPreviewImg');
+          preview.src = uploadedSigDataUrl;
+          $('#sigUploadPreview').style.display = 'block';
+          toast('Signature uploaded (PNG)');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function saveSignature() {
+      if (sigMode === 'upload') {
+        if (!uploadedSigDataUrl && !state.signatureDataUrl) {
+          toast('Please upload a signature image first');
+          return;
+        }
+        state.signatureDataUrl = uploadedSigDataUrl || state.signatureDataUrl;
+      } else {
+        if (!signaturePad || signaturePad.isEmpty()) {
+          toast('Please draw a signature first');
+          return;
+        }
+        // Always save as PNG
+        state.signatureDataUrl = signaturePad.toDataURL('image/png');
+      }
+
+      closeSignaturePad();
+      state.isPlacing = 'signature';
+      state.placingSize = 200;
+      placeHint.textContent = 'Tap on the document to place signature';
+      placeHint.classList.add('visible');
+      mainCanvas.style.cursor = 'crosshair';
+      toast('Now tap where you want the signature');
+    }
+
+    // ========== STAMPS ==========
+    const DEFAULT_STAMPS = [
+      { id: 'approved', emoji: '✓', label: 'Approved', color: '#30d158', text: 'APPROVED' },
+      { id: 'received', emoji: '↓', label: 'Received', color: '#0a84ff', text: 'RECEIVED' },
+      { id: 'paid', emoji: '$', label: 'Paid', color: '#30d158', text: 'PAID' },
+      { id: 'copy', emoji: '⎘', label: 'Copy', color: '#8e8e93', text: 'COPY' },
+      { id: 'urgent', emoji: '!', label: 'Urgent', color: '#ff9f0a', text: 'URGENT' },
+      { id: 'void', emoji: '✕', label: 'VOID', color: '#ff453a', text: 'VOID' },
+      { id: 'confidential', emoji: '🔒', label: 'Private', color: '#ff453a', text: 'CONFIDENTIAL' },
+      { id: 'custom', emoji: '＋', label: 'Custom', color: '#bf5af2' }
+    ];
+
+    function buildStampGrid() {
+      const grid = $('#stampGrid');
+      grid.innerHTML = '';
+      DEFAULT_STAMPS.forEach(s => {
+        const el = document.createElement('div');
+        el.className = 'stamp-item';
+        el.dataset.id = s.id;
+        if (s.id === 'custom' && state.selectedStamp?.id === 'custom' && state.selectedStamp.data) {
+          el.innerHTML = `<img src="${state.selectedStamp.data}" alt="custom"><span class="label">Custom</span>`;
+        } else {
+          el.innerHTML = `<span style="font-size:28px;line-height:1">${s.emoji}</span><span class="label">${s.label}</span>`;
+        }
+        el.addEventListener('click', () => {
+          document.querySelectorAll('.stamp-item').forEach(i => i.classList.remove('selected'));
+          el.classList.add('selected');
+          if (s.id === 'custom') {
+            if (!(state.selectedStamp?.id === 'custom' && state.selectedStamp.data)) {
+              $('#stampInput').click();
+              return;
+            }
+          }
+          state.selectedStamp = s.id === 'custom' ? state.selectedStamp : { ...s, type: 'preset' };
+          $('#btnPlaceStamp').disabled = false;
+        });
+        grid.appendChild(el);
+      });
+    }
+
+    function openStampSheet() {
+      buildStampGrid();
+      $('#stampSizeSlider').value = state.prefs.stampSize;
+      $('#stampSizeVal').textContent = state.prefs.stampSize;
+      state.placingSize = state.prefs.stampSize;
+      $('#stampModal').classList.add('open');
+      $('#btnPlaceStamp').disabled = !state.selectedStamp;
+      $('#textStampInput').value = '';
+    }
+
+    function closeStampSheet() {
+      $('#stampModal').classList.remove('open');
+    }
+
+    function createTextStamp(text, color, size = 200) {
+      const c = document.createElement('canvas');
+      const padding = 24;
+      const fontSize = Math.max(18, size * 0.22);
+      c.width = size + padding * 2;
+      c.height = size * 0.55 + padding;
+      const cx = c.getContext('2d');
+
+      // Rounded rect background
+      const r = 14;
+      cx.beginPath();
+      cx.roundRect(4, 4, c.width - 8, c.height - 8, r);
+      cx.fillStyle = color + '18';
+      cx.fill();
+      cx.lineWidth = 5;
+      cx.strokeStyle = color;
+      cx.stroke();
+
+      // Text
+      cx.font = `700 ${fontSize}px Inter, system-ui, sans-serif`;
+      cx.fillStyle = color;
+      cx.textAlign = 'center';
+      cx.textBaseline = 'middle';
+      cx.fillText(text.toUpperCase(), c.width / 2, c.height / 2 + 1);
+      return c.toDataURL('image/png');
+    }
+
+    function createEmojiStamp(emoji, color, size = 200) {
+      const c = document.createElement('canvas');
+      c.width = size;
+      c.height = size;
+      const cx = c.getContext('2d');
+      cx.beginPath();
+      cx.arc(size / 2, size / 2, size / 2 - 6, 0, Math.PI * 2);
+      cx.fillStyle = color + '20';
+      cx.fill();
+      cx.lineWidth = 7;
+      cx.strokeStyle = color;
+      cx.stroke();
+      cx.font = `${size * 0.42}px serif`;
+      cx.textAlign = 'center';
+      cx.textBaseline = 'middle';
+      cx.fillText(emoji, size / 2, size / 2 + 3);
+      return c.toDataURL('image/png');
+    }
+
+    function placeStampAction() {
+      // Prefer text stamp if typed
+      const typed = $('#textStampInput').value.trim();
+      if (typed) {
+        state.selectedStamp = {
+          id: 'text',
+          type: 'textstamp',
+          text: typed,
+          color: state.prefs.accent || '#0a84ff'
+        };
+      }
+      if (!state.selectedStamp) {
+        toast('Select or create a stamp first');
+        return;
+      }
+      closeStampSheet();
+      state.isPlacing = 'stamp';
+      state.placingSize = parseInt($('#stampSizeSlider').value) || state.prefs.stampSize;
+      placeHint.textContent = 'Tap on the document to place stamp';
+      placeHint.classList.add('visible');
+      mainCanvas.style.cursor = 'crosshair';
+      toast('Tap where you want the stamp');
+    }
+
+    // ========== CANVAS INTERACTION ==========
+    mainCanvas.addEventListener('pointerdown', (e) => {
+      if (!state.docImage || !state.isPlacing) return;
+      const rect = mainCanvas.getBoundingClientRect();
+      const scaleX = mainCanvas.width / rect.width;
+      const scaleY = mainCanvas.height / rect.height;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
+
+      pushHistory();
+
+      if (state.isPlacing === 'signature' && state.signatureDataUrl) {
+        const w = state.placingSize;
+        const h = w * 0.38;
+        state.annotations.push({
+          type: 'signature',
+          x: x - w / 2,
+          y: y - h / 2,
+          w, h,
+          data: state.signatureDataUrl
+        });
+        finishPlacing('Signature placed');
+      } else if (state.isPlacing === 'stamp' && state.selectedStamp) {
+        let dataUrl;
+        const size = state.placingSize;
+        if (state.selectedStamp.type === 'textstamp') {
+          dataUrl = createTextStamp(state.selectedStamp.text, state.selectedStamp.color, size);
+        } else if (state.selectedStamp.type === 'image' || state.selectedStamp.id === 'custom') {
+          dataUrl = state.selectedStamp.data;
+        } else {
+          dataUrl = createTextStamp(state.selectedStamp.text || state.selectedStamp.label, state.selectedStamp.color, size);
+        }
+        const h = size * (state.selectedStamp.type === 'textstamp' || state.selectedStamp.text ? 0.45 : 1);
+        state.annotations.push({
+          type: 'stamp',
+          x: x - size / 2,
+          y: y - h / 2,
+          w: size,
+          h,
+          data: dataUrl
+        });
+        finishPlacing('Stamp placed');
+      }
+    });
+
+    function finishPlacing(msg) {
+      state.isPlacing = null;
+      placeHint.classList.remove('visible');
+      mainCanvas.style.cursor = 'default';
+      renderDocument();
+      toast(msg);
+    }
+
+    // ========== TOOLS ==========
+    document.querySelectorAll('.tool').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tool = btn.dataset.tool;
+        if (tool === 'signature') openSignaturePad();
+        else if (tool === 'stamp') openStampSheet();
+        else if (tool === 'text') {
+          const text = prompt('Enter text to place on document:');
+          if (text && text.trim()) {
+            pushHistory();
+            state.annotations.push({
+              type: 'text',
+              x: mainCanvas.width / 2 - 50,
+              y: mainCanvas.height / 2,
+              text: text.trim(),
+              fontSize: 26,
+              color: '#111'
+            });
+            renderDocument();
+            toast('Text added — use Undo if needed');
+          }
+        } else if (tool === 'rotate') {
+          state.rotation = (state.rotation + 90) % 360;
+          renderDocument();
+        } else if (tool === 'filter') {
+          const filters = ['document', 'none', 'grayscale', 'contrast', 'bw'];
+          const idx = filters.indexOf(state.filter);
+          state.filter = filters[(idx + 1) % filters.length];
+          renderDocument();
+          const labels = { document: 'Document (HQ)', none: 'Original', grayscale: 'Grayscale', contrast: 'Contrast', bw: 'B&W' };
+          toast('Filter: ' + (labels[state.filter] || state.filter));
+        } else if (tool === 'undo') undo();
+        else if (tool === 'clear') {
+          if (state.annotations.length === 0) {
+            toast('Nothing to clear');
+            return;
+          }
+          if (confirm('Clear all signatures, stamps and text?')) {
+            pushHistory();
+            state.annotations = [];
+            renderDocument();
+            toast('Cleared');
+          }
+        }
+      });
+    });
+
+    // ========== EXPORT ==========
+    function openExport() {
+      if (!state.docImage) { toast('No document to export'); return; }
+      $('#exportModal').classList.add('open');
+    }
+
+    /** Render document + annotations at full source resolution (for export) */
+    function renderFullQualityCanvas() {
+      if (!state.docImage) return null;
+      const img = state.docImage;
+      let iw = img.naturalWidth || img.width;
+      let ih = img.naturalHeight || img.height;
+      const rot = ((state.rotation % 360) + 360) % 360;
+      const outW = (rot === 90 || rot === 270) ? ih : iw;
+      const outH = (rot === 90 || rot === 270) ? iw : ih;
+
+      const c = document.createElement('canvas');
+      c.width = outW;
+      c.height = outH;
+      const cctx = c.getContext('2d');
+      cctx.imageSmoothingEnabled = true;
+      cctx.imageSmoothingQuality = 'high';
+
+      cctx.save();
+      cctx.translate(outW / 2, outH / 2);
+      cctx.rotate((state.rotation * Math.PI) / 180);
+
+      if (state.filter === 'document') cctx.filter = 'contrast(1.28) brightness(1.04) saturate(0.92)';
+      else if (state.filter === 'grayscale') cctx.filter = 'grayscale(1) contrast(1.15)';
+      else if (state.filter === 'contrast') cctx.filter = 'contrast(1.35) brightness(1.06)';
+      else if (state.filter === 'bw') cctx.filter = 'grayscale(1) contrast(2.1) brightness(1.05)';
+      else cctx.filter = 'none';
+
+      cctx.drawImage(img, -iw / 2, -ih / 2, iw, ih);
+      cctx.filter = 'none';
+      cctx.restore();
+
+      // Scale annotations from display canvas to full-res
+      const dispW = mainCanvas.width || outW;
+      const dispH = mainCanvas.height || outH;
+      const sx = outW / dispW;
+      const sy = outH / dispH;
+
+      state.annotations.forEach(ann => {
+        if (ann.type === 'signature' || ann.type === 'stamp') {
+          const aimg = ann._img || new Image();
+          if (!ann._img) { aimg.src = ann.data; }
+          if (aimg.complete && aimg.naturalWidth) {
+            cctx.drawImage(aimg, ann.x * sx, ann.y * sy, ann.w * sx, ann.h * sy);
+          }
+        } else if (ann.type === 'text') {
+          cctx.font = `600 ${Math.round((ann.fontSize || 22) * sx)}px Inter, system-ui, sans-serif`;
+          cctx.fillStyle = ann.color || '#111';
+          cctx.fillText(ann.text, ann.x * sx, ann.y * sy);
+        }
+      });
+      return c;
+    }
+
+    function exportPNG() {
+      const full = renderFullQualityCanvas();
+      if (!full) { toast('No document to export'); return; }
+      const a = document.createElement('a');
+      a.download = `ScanSign-HQ-${Date.now()}.png`;
+      a.href = full.toDataURL('image/png'); // lossless
+      a.click();
+      $('#exportModal').classList.remove('open');
+      toast(`HQ PNG saved (${full.width}×${full.height})`);
+    }
+
+    function exportPDF() {
+      const full = renderFullQualityCanvas();
+      if (!full) { toast('No document to export'); return; }
+      const { jsPDF } = window.jspdf;
+      const data = full.toDataURL('image/jpeg', 0.96);
+      const pdf = new jsPDF({
+        orientation: full.width > full.height ? 'l' : 'p',
+        unit: 'px',
+        format: [full.width, full.height],
+        compress: true
+      });
+      pdf.addImage(data, 'JPEG', 0, 0, full.width, full.height, undefined, 'SLOW');
+      pdf.save(`ScanSign-HQ-${Date.now()}.pdf`);
+      $('#exportModal').classList.remove('open');
+      toast(`HQ PDF saved (${full.width}×${full.height})`);
+    }
+
+    // ========== FILE IMPORT ==========
+    function handleFile(file) {
+      if (!file || !file.type.startsWith('image/')) {
+        toast('Please select an image');
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        state.docImage = img;
+        state.annotations = [];
+        state.history = [];
+        state.rotation = 0;
+        state.filter = 'none';
+        showScreen('editor');
+        renderDocument();
+        URL.revokeObjectURL(url);
+        toast('Image imported');
+      };
+      img.src = url;
+    }
+
+    // ========== CUSTOMIZE ==========
+    function openCustomize() {
+      // sync UI
+      document.querySelectorAll('#accentColors .swatch').forEach(s => {
+        s.classList.toggle('active', s.dataset.color === state.prefs.accent);
+      });
+      document.querySelectorAll('#defaultPenColors .swatch').forEach(s => {
+        s.classList.toggle('active', s.dataset.color === state.prefs.penColor);
+      });
+      $('#defaultStampSize').value = state.prefs.stampSize;
+      $('#defStampVal').textContent = state.prefs.stampSize;
+      $('#customizeModal').classList.add('open');
+    }
+
+    // ========== EVENT BINDINGS ==========
+    $('#btnScan').addEventListener('click', () => { showScreen('scanner'); startCamera(); });
+    $('#btnCloseScanner').addEventListener('click', () => { stopCamera(); showScreen('home'); });
+    $('#btnCapture').addEventListener('click', captureFrame);
+    $('#btnTorch').addEventListener('click', toggleTorch);
+    $('#btnSwitchCam').addEventListener('click', () => {
+      state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
+      startCamera();
+    });
+
+    $('#btnImport').addEventListener('click', () => $('#fileInput').click());
+    $('#btnGalleryFromCam').addEventListener('click', () => $('#fileInput').click());
+    $('#fileInput').addEventListener('change', e => { handleFile(e.target.files[0]); e.target.value = ''; });
+
+    $('#btnBackEditor').addEventListener('click', () => showScreen('home'));
+    $('#btnExport').addEventListener('click', openExport);
+    $('#btnCloseExport').addEventListener('click', () => $('#exportModal').classList.remove('open'));
+
+    $('#btnQuickSign').addEventListener('click', openSignaturePad);
+    $('#btnQuickStamp').addEventListener('click', openStampSheet);
+    $('#btnOpenCustomize').addEventListener('click', openCustomize);
+    $('#btnSettings').addEventListener('click', openCustomize);
+
+    // Signature mode tabs
+    $('#tabDrawSig').addEventListener('click', () => setSigMode('draw'));
+    $('#tabUploadSig').addEventListener('click', () => setSigMode('upload'));
+
+    $('#btnClearSig').addEventListener('click', () => {
+      if (sigMode === 'draw') {
+        signaturePad?.clear();
+      } else {
+        uploadedSigDataUrl = null;
+        state.signatureDataUrl = null;
+        $('#sigUploadPreview').style.display = 'none';
+        $('#sigPreviewImg').src = '';
+        toast('Upload cleared');
+      }
+    });
+    $('#btnSaveSig').addEventListener('click', saveSignature);
+
+    // Upload signature image
+    $('#btnPickSigImage').addEventListener('click', () => $('#sigInput').click());
+    $('#sigInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) processUploadedSignature(file);
+      e.target.value = '';
+    });
+
+    // Pen color + thickness
+    document.querySelectorAll('#penColors .swatch').forEach(s => {
+      s.addEventListener('click', () => {
+        document.querySelectorAll('#penColors .swatch').forEach(x => x.classList.remove('active'));
+        s.classList.add('active');
+        state.penColor = s.dataset.color;
+        if (signaturePad) {
+          signaturePad.penColor = state.penColor;
+        }
+      });
+    });
+    $('#penThickness').addEventListener('input', e => {
+      state.penThickness = parseFloat(e.target.value);
+      $('#thicknessVal').textContent = state.penThickness.toFixed(1);
+      if (signaturePad) {
+        signaturePad.minWidth = state.penThickness * 0.55;
+        signaturePad.maxWidth = state.penThickness * 1.35;
+      }
+    });
+
+    $('#btnPlaceStamp').addEventListener('click', placeStampAction);
+    $('#btnUploadStamp').addEventListener('click', () => $('#stampInput').click());
+    $('#stampInput').addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        const max = 320;
+        const sc = Math.min(max / img.width, max / img.height, 1);
+        c.width = img.width * sc;
+        c.height = img.height * sc;
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        state.selectedStamp = { id: 'custom', type: 'image', data: c.toDataURL('image/png'), label: 'Custom' };
+        buildStampGrid();
+        document.querySelector('.stamp-item[data-id="custom"]')?.classList.add('selected');
+        $('#btnPlaceStamp').disabled = false;
+        URL.revokeObjectURL(url);
+        toast('Custom stamp ready');
+      };
+      img.src = url;
+      e.target.value = '';
+    });
+
+    $('#stampSizeSlider').addEventListener('input', e => {
+      state.placingSize = parseInt(e.target.value);
+      $('#stampSizeVal').textContent = state.placingSize;
+    });
+
+    // Customize sheet
+    document.querySelectorAll('#accentColors .swatch').forEach(s => {
+      s.addEventListener('click', () => {
+        document.querySelectorAll('#accentColors .swatch').forEach(x => x.classList.remove('active'));
+        s.classList.add('active');
+      });
+    });
+    document.querySelectorAll('#defaultPenColors .swatch').forEach(s => {
+      s.addEventListener('click', () => {
+        document.querySelectorAll('#defaultPenColors .swatch').forEach(x => x.classList.remove('active'));
+        s.classList.add('active');
+      });
+    });
+    $('#defaultStampSize').addEventListener('input', e => {
+      $('#defStampVal').textContent = e.target.value;
+    });
+
+    $('#btnSaveCustomize').addEventListener('click', () => {
+      const accent = document.querySelector('#accentColors .swatch.active')?.dataset.color || '#0a84ff';
+      const penColor = document.querySelector('#defaultPenColors .swatch.active')?.dataset.color || '#0a1f4d';
+      const stampSize = parseInt($('#defaultStampSize').value) || 130;
+      const newPrefs = { ...state.prefs, accent, penColor, stampSize };
+      savePrefs(newPrefs);
+      state.penColor = penColor;
+      $('#customizeModal').classList.remove('open');
+      toast('Preferences saved');
+    });
+
+    $('#btnResetPrefs').addEventListener('click', () => {
+      savePrefs({ ...defaultPrefs });
+      state.penColor = defaultPrefs.penColor;
+      state.penThickness = defaultPrefs.thickness;
+      openCustomize(); // refresh UI
+      toast('Reset to defaults');
+    });
+
+    // Export buttons
+    $('#btnExportPNG').addEventListener('click', exportPNG);
+    $('#btnExportPDF').addEventListener('click', exportPDF);
+
+    // Close modals on backdrop
+    ['sigModal', 'stampModal', 'customizeModal', 'exportModal'].forEach(id => {
+      $(`#${id}`).addEventListener('click', e => {
+        if (e.target.classList.contains('modal-backdrop')) e.target.classList.remove('open');
+      });
+    });
+
+    window.addEventListener('resize', () => { if (state.docImage) renderDocument(); });
+
+    // Init
+    buildStampGrid();
+    console.log('ScanSign Custom ready');
+  </script>
+</body>
+</html>
