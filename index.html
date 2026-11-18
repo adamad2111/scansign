@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ScanSign Mobile Pro</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://docs.opencv.org/4.8.0/opencv.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif}
+body{background:#000;color:#fff;min-height:100vh;overflow:hidden;display:flex;flex-direction:column}
+.top{height:52px;background:rgba(28,28,30,0.9);backdrop-filter:blur(20px);display:flex;align-items:center;justify-content:space-between;padding:0 16px;position:sticky;top:0;z-index:100;border-bottom:1px solid rgba(255,255,255,0.1)}
+.logo{font-weight:800;font-size:17px} .logo b{color:#0A84FF}
+.live{font-size:10px;background:#30D158;color:#000;padding:4px 8px;border-radius:12px;font-weight:800}
+.preview-area{flex:1;background:#1C1C1E;position:relative;overflow:auto;display:flex;flex-direction:column;align-items:center;padding:12px 12px 140px}
+#docPreview{width:100%;max-width:420px;background:white;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,0.5);overflow:hidden;min-height:560px;position:relative}
+#mainCanvas{width:100%;height:auto;display:block;touch-action:none;background:white}
+#emptyState{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#8E8E93;padding:40px;text-align:center}
+#emptyState .icon{width:64px;height:64px;background:#2C2C2E;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:30px;margin-bottom:16px}
+.bottom-sheet{position:fixed;bottom:0;left:0;right:0;background:#2C2C2E;border-top-left-radius:24px;border-top-right-radius:24px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;z-index:90;box-shadow:0 -10px 40px rgba(0,0,0,0.6)}
+.sheet-handle{width:36px;height:5px;background:rgba(255,255,255,0.3);border-radius:3px;margin:10px auto}
+.sheet-tabs{display:flex;gap:6px;padding:0 16px;overflow-x:auto}
+.tab{padding:8px 14px;border-radius:20px;background:rgba(255,255,255,0.1);font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;flex-shrink:0;border:0;color:white}
+.tab.active{background:white;color:black}
+.sheet-content{overflow:auto;padding:16px;flex:1}
+.card{background:#3A3A3C;border-radius:16px;padding:14px;margin-bottom:12px}
+.card-h{font-weight:700;font-size:13px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.btn{width:100%;padding:14px;border-radius:12px;border:0;font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-p{background:#0A84FF;color:white}
+.btn-s{background:rgba(255,255,255,0.15);color:white}
+.btn-w{background:white;color:black}
+.btn-g{background:rgba(255,255,255,0.08);color:white}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#scanVideo{width:100%;border-radius:12px;background:black;display:none;margin-top:10px}
+#scanCanvas{display:none}
+.sigPad{width:100%;height:120px;background:white;border-radius:12px;touch-action:none}
+.chipRow{display:flex;gap:8px;overflow:auto;padding-bottom:4px}
+.chip{min-width:80px;height:56px;background:white;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:2px solid transparent;cursor:pointer}
+.chip.active{border-color:#0A84FF}
+.chip img{max-width:70%;max-height:70%;object-fit:contain}
+.exportBar{position:fixed;bottom:90px;left:12px;right:12px;display:flex;gap:8px;z-index:80}
+.exportBar .btn{flex:1;padding:14px;font-size:13px;box-shadow:0 8px 20px rgba(0,0,0,0.4);border-radius:14px}
+.range{width:100%;accent-color:#0A84FF}
+.fab{position:fixed;right:16px;bottom:160px;width:48px;height:48px;background:white;color:black;border-radius:24px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;box-shadow:0 8px 20px rgba(0,0,0,0.4);cursor:pointer;z-index:85}
+</style>
+</head>
+<body>
+<div class="top">
+<div class="logo">Scan<b>Sign</b> • Mobile Pro</div>
+<div style="display:flex;gap:8px;align-items:center"><div class="live">LIVE</div><button style="background:rgba(255,255,255,0.15);border:0;color:white;padding:6px 10px;border-radius:10px;font-size:12px;font-weight:700" onclick="document.getElementById('fileInput').click()">Upload</button></div>
+</div>
+<div class="preview-area">
+<div id="docPreview">
+<canvas id="mainCanvas" width="800" height="1120"></canvas>
+<div id="emptyState">
+<div class="icon">📄</div>
+<div style="font-weight:700;color:white;font-size:16px">No Document</div>
+<div style="font-size:13px;margin-top:6px;line-height:1.4">Tap Upload or Start Camera Scanner<br>Apple-style auto-crop included</div>
+<button class="btn btn-p" style="margin-top:16px;width:auto;padding:10px 18px;font-size:13px" onclick="document.getElementById('fileInput').click()">+ Upload Document</button>
+</div>
+</div>
+<div style="margin-top:12px;font-size:11px;color:#8E8E93;text-align:center">Preview • Tap sig to place • Drag to move</div>
+</div>
+<div class="fab" onclick="switchTab('scan')">📸</div>
+<div class="exportBar">
+<button class="btn btn-w" onclick="exportPreview()">👁️ Preview</button>
+<button class="btn btn-p" onclick="exportPDF()">📄 Export PDF</button>
+<button class="btn btn-s" onclick="exportPNG()">🖼️ PNG</button>
+</div>
+<div class="bottom-sheet" id="sheet">
+<div class="sheet-handle"></div>
+<div class="sheet-tabs">
+<button class="tab active" data-tab="scan" onclick="switchTab('scan')">📸 Scan</button>
+<button class="tab" data-tab="sign" onclick="switchTab('sign')">✒️ Signature</button>
+<button class="tab" data-tab="stamp" onclick="switchTab('stamp')">🔴 Stamp</button>
+<button class="tab" data-tab="adjust" onclick="switchTab('adjust')">🎛️ Adjust</button>
+<button class="tab" data-tab="export" onclick="switchTab('export')">⬇️ Export</button>
+</div>
+<div class="sheet-content">
+<div id="tab-scan">
+<div class="card">
+<div class="card-h">Apple Notes Style Scanner <span style="font-size:10px;background:#30D158;color:black;padding:3px 6px;border-radius:8px">AUTO CROP + OCR</span></div>
+<button class="btn btn-p" onclick="startScanner()">▶️ Start Camera Scanner</button>
+<video id="scanVideo" autoplay playsinline></video>
+<canvas id="scanCanvas"></canvas>
+<div id="scanControls" style="display:none;flex-direction:column;gap:8px;margin-top:10px">
+<div class="grid2">
+<button class="btn btn-s" onclick="captureDoc()">📷 Capture</button>
+<button class="btn btn-s" onclick="autoCrop()">✨ Auto-Crop</button>
+<button class="btn btn-s" onclick="enhanceDoc()">🌟 Enhance B&W</button>
+<button class="btn btn-s" onclick="ocrDoc()">🔤 OCR Text</button>
+</div>
+<button class="btn btn-g" onclick="stopScanner()">Stop Camera</button>
+</div>
+<input type="file" id="fileInput" accept="image/*" hidden>
+<button class="btn btn-g" style="margin-top:10px" onclick="document.getElementById('fileInput').click()">📁 Upload from Gallery</button>
+<div id="ocrResult" style="display:none;margin-top:10px;background:#1C1C1E;padding:10px;border-radius:10px;font-size:12px;max-height:100px;overflow:auto;color:white"></div>
+</div>
+</div>
+<div id="tab-sign" style="display:none">
+<div class="card">
+<div class="card-h">Draw Signature</div>
+<canvas id="sigPad" class="sigPad"></canvas>
+<div class="grid2" style="margin-top:10px">
+<button class="btn btn-g" onclick="clearPad()">Clear</button>
+<button class="btn btn-p" onclick="saveSig()">+ Add to Doc</button>
+</div>
+<input type="file" id="sigFile" accept="image/*" hidden>
+<button class="btn btn-g" style="margin-top:10px" onclick="document.getElementById('sigFile').click()">Upload Signature PNG</button>
+</div>
+<div class="card">
+<div class="card-h">My Signatures • Tap to place on preview</div>
+<div class="chipRow" id="sigList"></div>
+<div id="noSig" style="font-size:12px;color:#8E8E93;margin-top:8px">No signatures yet — draw or upload</div>
+</div>
+</div>
+<div id="tab-stamp" style="display:none">
+<div class="card">
+<div class="card-h">Create Stamp / Seal</div>
+<input id="stampTxt" placeholder="APPROVED" style="width:100%;padding:12px;border-radius:10px;border:0;background:#1C1C1E;color:white;font-size:14px">
+<div class="grid2" style="margin-top:10px">
+<button class="btn btn-s" onclick="makeStamp('circle')">⭕ Circle Seal</button>
+<button class="btn btn-s" onclick="makeStamp('rect')">▭ Rect Stamp</button>
+</div>
+<input type="file" id="stampFile" accept="image/*" hidden>
+<button class="btn btn-g" style="margin-top:10px" onclick="document.getElementById('stampFile').click()">Upload Stamp Image</button>
+</div>
+<div class="card">
+<div class="card-h">My Stamps • Tap to place</div>
+<div class="chipRow" id="stampList"></div>
+<div id="noStamp" style="font-size:12px;color:#8E8E93;margin-top:8px">No stamps yet</div>
+</div>
+</div>
+<div id="tab-adjust" style="display:none">
+<div class="card">
+<div class="card-h">Selected Object</div>
+<div id="noSel" style="font-size:13px;color:#8E8E93">Tap a signature/stamp on preview to adjust</div>
+<div id="hasSel" style="display:none;flex-direction:column;gap:12px">
+<label style="font-size:12px;opacity:0.7">Opacity</label><input type="range" id="opR" min="0.1" max="1" step="0.05" value="1" class="range">
+<label style="font-size:12px;opacity:0.7">Scale</label><input type="range" id="scR" min="0.2" max="4" step="0.05" value="1" class="range">
+<label style="font-size:12px;opacity:0.7">Rotation</label><input type="range" id="roR" min="-180" max="180" step="1" value="0" class="range">
+<div class="grid2"><button class="btn btn-s" onclick="bringFront()">Bring Front</button><button class="btn btn-s" onclick="sendBack()">Send Back</button></div>
+<button class="btn btn-g" style="background:#FF3B30" onclick="deleteSel()">🗑️ Delete Selected</button>
+</div>
+</div>
+</div>
+<div id="tab-export" style="display:none">
+<div class="card">
+<div class="card-h">Export Document</div>
+<button class="btn btn-p" onclick="exportPreview()">👁️ Fullscreen Preview</button>
+<div class="grid2" style="margin-top:10px">
+<button class="btn btn-w" onclick="exportPDF()">📄 Export PDF</button>
+<button class="btn btn-s" onclick="exportPNG()">🖼️ PNG HQ</button>
+</div>
+<button class="btn btn-s" style="margin-top:8px" onclick="exportJPG()">📷 Export JPG</button>
+</div>
+<div class="card" style="background:#0A84FF">
+<div style="font-weight:700;font-size:13px">🌐 Host as Live Link</div>
+<div style="font-size:11px;margin-top:6px;opacity:0.9">1. Save this file as index.html<br>2. Go to vercel.com/new or app.netlify.com/drop<br>3. Upload → Live link!</div>
+<button class="btn btn-w" style="margin-top:10px" onclick="downloadSelf()">⬇️ Download index.html</button>
+</div>
+</div>
+</div>
+</div>
+<script>
+const mainCanvas=document.getElementById('mainCanvas'),mctx=mainCanvas.getContext('2d');let docImg=null,objs=[],sel=null,hist=[],stream=null,isDrag=false,dragOff={x:0,y:0};
+function saveH(){hist.push(JSON.stringify(objs.map(o=>({x:o.x,y:o.y,w:o.w,h:o.h,scale:o.scale,rot:o.rotation,op:o.opacity,data:o.data}))));if(hist.length>30)hist.shift();}
+function undo(){if(!hist.length)return;const arr=JSON.parse(hist.pop());objs=arr.map(o=>{const img=new Image();img.src=o.data;return{img,data:o.data,[STRIPPED]
+function render(){mctx.clearRect(0,0,mainCanvas.width,mainCanvas.height);mctx.fillStyle='white';mctx.fillRect(0,0,mainCanvas.width,mainCanvas.height);if(docImg)mctx.drawImage(docImg,0,0,mainCanvas.width,mainCanvas.height);objs.forEach((o,i)=>{mctx.save();mctx.globalAlpha=o.opacity;mctx.translate(o.x,o.y);mctx.rotate(o.rotation*Math.PI/180);mctx.scale(o.scale,o.scale);mctx.drawImage(o.img,-o.w/2,-o.h/2,o.w,o.h);mctx.restore();if(sel===i){mctx.save();mctx.strokeStyle='#0A84FF';mctx.setLineDash([6,4]);mctx.lineWidth=2;mctx.translate(o.x,o.y);mctx.rotate(o.rotation*Math.PI/180);const bw=o.w*o.scale,bh=o.h*o.scale;mctx.strokeRect(-bw/2-4,-bh/2-4,bw+8,bh+8);mctx.restore();}});}
+function fitImg(img){const r=Math.min(800/img.width,1120/img.height,1);mainCanvas.width=img.width*r;mainCanvas.height=img.height*r;document.getElementById('emptyState').style.display='none';render();}
+async function startScanner(){try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const v=document.getElementById('scanVideo');v.srcObject=stream;v.style.display='block';document.getElementById('scanControls').style.display='flex';}catch(e){alert('Camera: '+e.message);}}
+function stopScanner(){if(stream)stream.getTracks().forEach(t=>t.stop());document.getElementById('scanVideo').style.display='none';document.getElementById('scanControls').style.display='none';}
+function captureDoc(){const v=document.getElementById('scanVideo'),c=document.getElementById('scanCanvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);const img=new Image();img.onload=()=>{docImg=img;fitImg(img);};img.src=c.toDataURL();}
+function autoCrop(){if(!docImg){alert('Capture first');return;}try{const src=cv.imread(mainCanvas);const gray=new cv.Mat();cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);const blur=new cv.Mat();cv.GaussianBlur(gray,blur,new cv.Size(5,5),0);const edges=new cv.Mat();cv.Canny(blur,edges,75,200);const contours=new cv.MatVector(),hier=new cv.Mat();cv.findContours(edges,contours,hier,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);let maxA=0,b=null;for(let i=0;i<contours.size();i++){const cnt=contours.get(i);const a=cv.contourArea(cnt);if(a>maxA){maxA=a;b=cnt;}}if(b){const rect=cv.boundingRect(b);mctx.strokeStyle='#30D158';mctx.lineWidth=3;mctx.strokeRect(rect.x,rect.y,rect.width,rect.height);setTimeout(()=>render(),1200);}src.delete();gray.delete();blur.delete();edges.delete();contours.delete();hier.delete();}catch(e){alert('OpenCV loading, try again');}}
+function enhanceDoc(){if(!docImg)return;const tmp=document.createElement('canvas');tmp.width=mainCanvas.width;tmp.height=mainCanvas.height;const t=tmp.getContext('2d');t.drawImage(mainCanvas,0,0);const id=t.getImageData(0,0,tmp.width,tmp.height);for(let i=0;i<id.data.length;i+=4){const b=id.data[i]*0.3+id.data[i+1]*0.59+id.data[i+2]*0.11;const v=b>180?255:b<80?0:(b-80)*2;id.data[i]=id.data[i+1]=id.data[i+2]=v;}t.putImageData(id,0,0);const img=new Image();img.onload=()=>{docImg=img;render();};img.src=tmp.toDataURL();}
+async function ocrDoc(){const r=document.getElementById('ocrResult');r.style.display='block';r.textContent='🔤 OCR scanning...';const d=mainCanvas.toDataURL();const res=await Tesseract.recognize(d,'eng');r.textContent=res.data.text.substring(0,600)||'No text found';}
+document.getElementById('fileInput').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const fr=new FileReader();fr.onload=ev=>{const img=new Image();img.onload=()=>{docImg=img;fitImg(img);};img.src=ev.target.result;};fr.readAsDataURL(f);});
+const pad=document.getElementById('sigPad'),pctx=pad.getContext('2d');function resizePad(){const r=pad.getBoundingClientRect();pad.width=r.width*2;pad.height=120*2;pctx.scale(2,2);pctx.lineCap='round';pctx.lineJoin='round';pctx.lineWidth=2.5;pctx.strokeStyle='black';}resizePad();let drawing=false;pad.addEventListener('pointerdown',e=>{drawing=true;pctx.beginPath();const rect=pad.getBoundingClientRect();pctx.moveTo((e.clientX-rect.left),(e.clientY-rect.top));});pad.addEventListener('pointermove',e=>{if(!drawing)return;const rect=pad.getBoundingClientRect();pctx.lineTo((e.clientX-rect.left),(e.clientY-rect.top));pctx.stroke();});window.addEventListener('pointerup',()=>drawing=false);function clearPad(){pctx.clearRect(0,0,pad.width,pad.height);}function saveSig(){const d=pad.toDataURL();const b=document.createElement('canvas');b.width=pad.width;b.height=pad.height;if(d===b.toDataURL()){alert('Draw first');return;}addChip(d,'sig');clearPad();switchTab('scan');}
+document.getElementById('sigFile').addEventListener('change',e=>{const fr=new FileReader();fr.onload=ev=>addChip(ev.target.result,'sig');fr.readAsDataURL(e.target.files[0]);});document.getElementById('stampFile').addEventListener('change',e=>{const fr=new FileReader();fr.onload=ev=>addChip(ev.target.result,'stamp');fr.readAsDataURL(e.target.files[0]);});
+function addChip(url,type){const list=document.getElementById(type==='sig'?'sigList':'stampList');const no=document.getElementById(type==='sig'?'noSig':'noStamp');if(no) no.style.display='none';const div=document.createElement('div');div.className='chip';div.innerHTML=`<img src="${url}">`;div.onclick=()=>{const img=new Image();img.onload=()=>{saveH();objs.push({img,data:url,[STRIPPED]
+function makeStamp(shape){const txt=document.getElementById('stampTxt').value||'APPROVED';const c=document.createElement('canvas');c.width=400;c.height=400;const cx=c.getContext('2d');if(shape==='circle'){cx.strokeStyle='#FF3B30';cx.lineWidth=10;cx.beginPath();cx.arc(200,200,150,0,Math.PI*2);cx.stroke();cx.lineWidth=3;cx.beginPath();cx.arc(200,200,120,0,Math.PI*2);cx.stroke();cx.fillStyle='#FF3B30';cx.font='bold 32px sans-serif';cx.textAlign='center';cx.fillText(txt.toUpperCase(),200,210);}else{cx.strokeStyle='#0A4A8A';cx.lineWidth=8;cx.strokeRect(20,20,360,360);cx.fillStyle='#0A4A8A';cx.font='bold 32px sans-serif';cx.textAlign='center';cx.fillText(txt.toUpperCase(),200,210);cx.font='14px sans-serif';cx.fillText(new Date().toLocaleDateString(),200,240);}addChip(c.toDataURL(),'stamp');}
+mainCanvas.addEventListener('pointerdown',e=>{const rect=mainCanvas.getBoundingClientRect();const x=(e.clientX-rect.left)*(mainCanvas.width/rect.width);const y=(e.clientY-rect.top)*(mainCanvas.height/rect.height);for(let i=objs.length-1;i>=0;i--){const o=objs[i];const dx=x-o.x,dy=y-o.y;const cos=Math.cos(-o.rotation*Math.PI/180),sin=Math.sin(-o.rotation*Math.PI/180);const rx=dx*cos - dy*sin,ry=dx*sin + dy*cos;if(Math.abs(rx)<o.w*o.scale/2+12 && Math.abs(ry)<o.h*o.scale/2+12){sel=i;isDrag=true;dragOff={x:rx,y:ry};saveH();document.getElementById('noSel').style.display='none';document.getElementById('hasSel').style.display='flex';const oo=objs[sel];document.getElementById('opR').value=oo.opacity;document.getElementById('scR').value=oo.scale;document.getElementById('roR').value=oo.rotation;render();return;}}sel=null;document.getElementById('noSel').style.display='block';document.getElementById('hasSel').style.display='none';render();});
+mainCanvas.addEventListener('pointermove',e=>{if(!isDrag||sel===null)return;const rect=mainCanvas.getBoundingClientRect();const x=(e.clientX-rect.left)*(mainCanvas.width/rect.width);const y=(e.clientY-rect.top)*(mainCanvas.height/rect.height);const o=objs[sel];const cos=Math.cos(o.rotation*Math.PI/180),sin=Math.sin(o.rotation*Math.PI/180);o.x=x-(dragOff.x*cos - dragOff.y*sin);o.y=y-(dragOff.x*sin + dragOff.y*cos);render();});window.addEventListener('pointerup',()=>isDrag=false);
+document.getElementById('opR').addEventListener('input',()=>{if(sel===null)return;objs[sel].opacity=parseFloat(document.getElementById('opR').value);render();});
+document.getElementById('scR').addEventListener('input',()=>{if(sel===null)return;objs[sel].scale=parseFloat(document.getElementById('scR').value);render();});
+document.getElementById('roR').addEventListener('input',()=>{if(sel===null)return;objs[sel].rotation=parseFloat(document.getElementById('roR').value);render();});
+function deleteSel(){if(sel===null)return;saveH();objs.splice(sel,1);sel=null;document.getElementById('noSel').style.display='block';document.getElementById('hasSel').style.display='none';render();}
+function clearAll(){saveH();objs=[];docImg=null;mctx.fillStyle='white';mctx.fillRect(0,0,mainCanvas.width,mainCanvas.height);sel=null;document.getElementById('emptyState').style.display='flex';render();}
+function bringFront(){if(sel===null)return;const o=objs.splice(sel,1)[0];objs.push(o);sel=objs.length-1;render();}
+function sendBack(){if(sel===null)return;const o=objs.splice(sel,1)[0];objs.unshift(o);sel=0;render();}
+function switchTab(name){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));['scan','sign','stamp','adjust','export'].forEach(n=>{const el=document.getElementById('tab-'+n);if(el) el.style.display=n===name?'block':'none';});}
+function exportPreview(){if(!docImg && objs.length===0){alert('Upload a document first');return;}const w=window.open('');w.document.write(`<html><head><title>Preview - Signed Document</title><style>body{margin:0;background:#1C1C1E;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:20px} img{max-width:90vw;max-height:85vh;box-shadow:0 20px 60px rgba(0,0,0,0.8);border-radius:8px;background:white} .bar{margin-top:20px;display:flex;gap:10px} .bar button{padding:10px 18px;border-radius:10px;border:0;font-weight:700;cursor:pointer} .primary{background:#0A84FF;color:white} .secondary{background:rgba(255,255,255,0.15);color:white}</style></head><body><img src="${mainCanvas.toDataURL('image/png')}"><div class="bar"><button class="secondary" onclick="window.close()">Close</button><button class="primary" onclick="const a=document.createElement('a');a.download='preview.png';a.href=document.querySelector('img').src;a.click()">Download PNG</button></div></body></html>`);}
+function exportPNG(){if(!docImg && objs.length===0){alert('Upload a document first to export');return;}const a=document.createElement('a');a.download='signed-document.png';a.href=mainCanvas.toDataURL('image/png');a.click();}
+function exportJPG(){if(!docImg && objs.length===0){alert('Upload a document first');return;}const tmp=document.createElement('canvas');tmp.width=mainCanvas.width;tmp.height=mainCanvas.height;const c=tmp.getContext('2d');c.fillStyle='white';c.fillRect(0,0,tmp.width,tmp.height);c.drawImage(mainCanvas,0,0);const a=document.createElement('a');a.download='signed-document.jpg';a.href=tmp.toDataURL('image/jpeg',0.95);a.click();}
+function exportPDF(){if(!docImg && objs.length===0){alert('Upload a document first to export PDF');return;}const {jsPDF}=window.jspdf;const pdf=new jsPDF({orientation:mainCanvas.height>mainCanvas.width?'portrait':'landscape',unit:'px',format:[mainCanvas.width,mainCanvas.height]});pdf.addImage(mainCanvas.toDataURL('image/png'),'PNG',0,0,mainCanvas.width,mainCanvas.height);pdf.save('signed-document.pdf');}
+function downloadSelf(){const html=document.documentElement.outerHTML;const blob=new Blob([html],{type:'text/html'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='index.html';a.click();}
+mctx.fillStyle='white';mctx.fillRect(0,0,mainCanvas.width,mainCanvas.height);
+</script>
+</body>
+</html>
